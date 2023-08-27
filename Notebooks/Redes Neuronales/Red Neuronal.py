@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[127]:
+# In[1]:
 
 
 from sklearn.model_selection import train_test_split
@@ -13,30 +13,39 @@ import tensorflow as tf
 import keras
 
 
-# In[128]:
+# In[2]:
+
+
+tf.test.is_gpu_available()
+
+
+# In[3]:
 
 
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Dropout, BatchNormalization
-from tensorflow.keras.initializers import HeNormal
+from tensorflow.keras.initializers import HeNormal, glorot_uniform
 from keras.regularizers import l1, l2
 from tensorflow.keras.utils import to_categorical
 
 
-# In[129]:
+# In[4]:
 
 
-df = pd.read_pickle('../../Base de datos/train_clean.pkl')
-df
+df_train = pd.read_pickle('../../Base de datos/Processed/train_clean.pkl')
+df_train
+
+
+# In[5]:
+
+
+df_temp = pd.read_pickle('../../Base de datos/Processed/nn_challenge_test_clean.pkl')
+df_temp
 
 
 # # Balanceo de datos
-
-# In[130]:
-
-
 from sklearn.utils import resample
 
 # Separar las clases mayoritaria y minoritaria
@@ -53,13 +62,7 @@ df_minority_upsampled = resample(df_minority,
 df_upsampled = pd.concat([df_majority, df_minority_upsampled])
 
 # Mostrar el nuevo recuento de clases
-df_upsampled.target.value_counts()
-
-
-# In[131]:
-
-
-# Submuestreo de la clase mayoritaria
+df_upsampled.target.value_counts()# Submuestreo de la clase mayoritaria
 df_majority_downsampled = resample(df_majority, 
                                    replace=False,    # Muestreo sin reemplazo
                                    n_samples=len(df_minority),  # Coincide con el número en la clase minoritaria
@@ -69,82 +72,86 @@ df_majority_downsampled = resample(df_majority,
 df_downsampled = pd.concat([df_majority_downsampled, df_minority])
 
 # Mostrar el nuevo recuento de clases
-df_downsampled.target.value_counts()
+df_downsampled.target.value_counts()df_downsampled
+# In[6]:
 
 
-# In[132]:
+X_train = df_train.drop(columns = ['target'])
+y_train = df_train['target']
+
+y_train = to_categorical(y_train, num_classes=2)
+y_train[5]
+# In[7]:
 
 
-df_downsampled
+X_temp = df_temp.drop(columns = ['target'])
+y_temp = df_temp['target']
 
-
-# In[133]:
-
-
-X = df_downsampled.drop(columns = ['target'])
-y = df_downsampled['target']
-
-
-# In[134]:
-
-
-y
-
-
-# In[135]:
-
-
-X
-
-
-# In[136]:
-
-
-y = to_categorical(y, num_classes=2)
-y
-
-
+y_temp = to_categorical(y_temp, num_classes=2)
+y_temp[5]
 # # Reescalamos datos
 
-# In[137]:
+# In[8]:
 
 
 from sklearn.preprocessing import StandardScaler
 
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+X_train = scaler.fit_transform(X_train)
 
 
-# In[138]:
+# In[9]:
 
 
-X_scaled
+X_train
 
 
-# In[139]:
+# In[10]:
+
+
+X_temp = scaler.fit_transform(X_temp)
+
+
+# In[11]:
+
+
+X_temp
+
+
+# In[12]:
 
 
 from sklearn.model_selection import train_test_split
 
-X_train, X_val, y_train, y_val = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
+# Luego, dividimos el conjunto temporal en conjuntos de validación y prueba
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
+
+X_train.shape, X_val.shape, X_test.shape, y_train.shape, y_val.shape, y_test.shape
 
 
-# In[140]:
+# In[13]:
 
 
 np.shape(X_val)
 
 
+# In[14]:
+
+
+y_val
+
+
 # # Unimos coeficeintes con datos
 
-# In[141]:
+# In[15]:
 
 
 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
 val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
 
 
-# In[142]:
+# In[16]:
 
 
 train_dataset
@@ -152,19 +159,20 @@ train_dataset
 
 # # Mezclar y procesar por lotes los conjuntos de datos
 
-# In[143]:
+# In[17]:
 
 
-BATCH_SIZE = 100
-SHUFFLE_BUFFER_SIZE = 100
+BATCH_SIZE = 10000
+SHUFFLE_BUFFER_SIZE = 10000
 
 train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
 val_dataset = val_dataset.batch(BATCH_SIZE)
+test_dataset = test_dataset.batch(BATCH_SIZE)
 
 
 # # Creación del modelo
 
-# In[158]:
+# In[18]:
 
 
 from keras.models import Sequential
@@ -174,7 +182,7 @@ from keras.regularizers import l1
 model = Sequential()
 
 # Flatten layer
-model.add(Flatten(input_shape=(120,)))
+model.add(Flatten(input_shape=(137,)))
 
 # Batch normalization
 model.add(BatchNormalization())
@@ -183,6 +191,8 @@ model.add(BatchNormalization())
 model.add(Dense(120, activation='relu', kernel_initializer='glorot_uniform'))
 model.add(Dense(120, activation='relu', kernel_initializer='glorot_uniform'))
 model.add(Dense(120, activation='relu', kernel_initializer='glorot_uniform'))
+model.add(Dropout(0.2))
+
 
 # Second set of dense layers
 model.add(Dense(60, activation='relu', kernel_initializer='glorot_uniform'))
@@ -195,17 +205,18 @@ model.add(Dropout(0.2))
 model.add(BatchNormalization())
 
 # Output layer
-model.add(Dense(2, activation='sigmoid'))
+model.add(Dense(1, activation='sigmoid'))
 
 
 
-# In[159]:
+
+# In[19]:
 
 
 model.summary()
 
 
-# In[160]:
+# In[20]:
 
 
 keras.utils.plot_model(model,show_shapes=True)
@@ -213,14 +224,14 @@ keras.utils.plot_model(model,show_shapes=True)
 
 # # Entrenamos el modelo
 
-# In[161]:
+# In[21]:
 
 
 from keras.optimizers import Adam
-optimizer = Adam(learning_rate=0.001,clipvalue=100.0)
+optimizer = Adam(learning_rate=0.0001,clipvalue=100.0)
 
 
-# In[162]:
+# In[22]:
 
 
 def total_mae_loss(y_true, y_pred):
@@ -230,18 +241,14 @@ def total_mae_loss(y_true, y_pred):
     return total_loss
 
 
-# In[163]:
+# In[23]:
 
 
 def brier_score(y_true, y_pred):
     return tf.reduce_mean(tf.square(y_true - y_pred))
 
-metrics = [ ]
 
-model.compile(optimizer='adam',
-              loss= 'binary_crossentropy',
-              metrics=['accuracy'])
-# In[164]:
+# In[24]:
 
 
 model.compile(optimizer= optimizer,
@@ -249,17 +256,63 @@ model.compile(optimizer= optimizer,
               metrics=[brier_score, 'accuracy'])
 
 
-# In[165]:
+# In[25]:
 
 
 def scheduler(epoch, lr):
-  if epoch < 400:
-    return lr
-  else:
-    return -1.65e-6*epoch +  0.00166
+    if epoch < 200:
+        return 0.001
+    elif epoch >= 200 and epoch <= 1000:
+        slope = (0.000001 - 0.001) / (1000 - 200)
+        intercept = 0.001 - (slope * 200)
+        return slope * epoch + intercept
+    else:
+        return 0.000001  # Mantener el learning rate en 0.000001 para épocas mayores a 1000 si es necesario
 
 
-# In[166]:
+# In[30]:
+
+
+from keras.callbacks import Callback
+import keras.backend as K
+
+class CyclicLR(Callback):
+    def __init__(self, base_lr=0.0001, max_lr=0.006, step_size=2000., mode='triangular'):
+        super(CyclicLR, self).__init__()
+        self.base_lr = base_lr
+        self.max_lr = max_lr
+        self.step_size = step_size
+        self.mode = mode
+        self.clr_iterations = 0.
+        self.trn_iterations = 0.
+        self.history = {}
+
+    def clr(self):
+        cycle = np.floor(1 + self.clr_iterations / (2 * self.step_size))
+        x = np.abs(self.clr_iterations / self.step_size - 2 * cycle + 1)
+        if self.mode == 'triangular':
+            return self.base_lr + (self.max_lr - self.base_lr) * np.maximum(0, (1 - x))
+
+    def on_train_begin(self, logs={}):
+        logs = logs or {}
+        if self.clr_iterations == 0:
+            K.set_value(self.model.optimizer.lr, self.base_lr)
+        else:
+            K.set_value(self.model.optimizer.lr, self.clr())
+
+    def on_batch_end(self, epoch, logs=None):
+        logs = logs or {}
+        self.trn_iterations += 1
+        self.clr_iterations += 1
+        K.set_value(self.model.optimizer.lr, self.clr())
+        
+#    def on_epoch_end(self, epoch, logs=None):
+#        # Imprimir el learning rate actual
+#        current_lr = K.get_value(self.model.optimizer.lr)
+#        print(f"Current Learning Rate at end of epoch {epoch}: {current_lr}")    
+
+
+# In[31]:
 
 
 class PrintLastBatch(tf.keras.callbacks.Callback):
@@ -273,125 +326,114 @@ class PrintLastBatch(tf.keras.callbacks.Callback):
         tf.print("Último y_pred de la época:", y_pred, summarize=-1)
 
 
-# In[175]:
+# In[ ]:
 
 
-val_epochs = 1000
+val_epochs = 10000
 
 early_stop = tf.keras.callbacks.EarlyStopping( monitor = 'val_accuracy', patience = 1000,verbose = 1, 
                                               restore_best_weights = True)
 
-#class_weights = {0: 1, 1: .16}  # asigna más peso a la clase 0
+class_weights = {0: 1, 1: .1}  # asigna más peso a la clase 0
 
+clr = CyclicLR(base_lr=0.0001, max_lr=0.006, step_size=2000., mode='triangular')
 
 reduce_lr = tf.keras.callbacks.LearningRateScheduler(scheduler)
-#history = model.fit(train_dataset, validation_data=val_dataset, epochs= val_epochs, callbacks=[reduce_lr, early_stop],
-#                    class_weight=class_weights)
-history = model.fit(train_dataset, validation_data=val_dataset, epochs= val_epochs, callbacks=[reduce_lr, early_stop])
+history = model.fit(train_dataset, validation_data=val_dataset, epochs= val_epochs, callbacks=[clr, early_stop],
+                    class_weight=class_weights)
+#history = model.fit(train_dataset, validation_data=val_dataset, epochs= val_epochs, callbacks=[reduce_lr, early_stop, PrintLastBatch()],
+#                   class_weight=class_weights)
 
 
 # # Analizamos accuracy y loss
 
-# In[168]:
+# In[82]:
 
 
-# Plotting
-plt.figure(figsize=(18, 6))
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
 
-# Subplot for Accuracy
-plt.subplot(1, 3, 1)
-plt.plot(epochs_range, acc, label='Training Accuracy')
-plt.plot(epochs_range, val_acc, label='Validation Accuracy')
-plt.legend(loc='lower right')
-plt.title('Training and Validation Accuracy')
+loss = history.history['loss']
+val_loss = history.history['val_loss']
 
-# Subplot for Loss
-plt.subplot(1, 3, 2)
-plt.plot(epochs_range, loss, label='Training Loss')
-plt.plot(epochs_range, val_loss, label='Validation Loss')
-plt.legend(loc='upper right')
-plt.title('Training and Validation Loss')
+brier_score = history.history['brier_score']
+val_brier_score = history.history['val_brier_score']
 
-# Subplot for Brier Score
-plt.subplot(1, 3, 3)
-plt.plot(epochs_range, brier_score, label='Training Brier Score')
-plt.plot(epochs_range, val_brier_score, label='Validation Brier Score')
-plt.legend(loc='upper right')
-plt.title('Training and Validation Brier Score')
+# Crear figura y ejes
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-plt.tight_layout()
+# Graficar Accuracy
+axes[0].plot(epochs_range, acc, label='Training Accuracy')
+axes[0].plot(epochs_range, val_acc, label='Validation Accuracy')
+axes[0].legend(loc='lower right')
+axes[0].set_title('Training and Validation Accuracy')
+
+# Graficar Loss
+axes[1].plot(epochs_range, loss, label='Training Loss')
+axes[1].plot(epochs_range, val_loss, label='Validation Loss')
+axes[1].legend(loc='upper right')
+axes[1].set_title('Training and Validation Loss')
+
+# Graficar Brier Score
+axes[2].plot(epochs_range, brier_score, label='Training Brier Score')
+axes[2].plot(epochs_range, val_brier_score, label='Validation Brier Score')
+axes[2].legend(loc='upper right')
+axes[2].set_title('Training and Validation Brier Score')
+
 plt.show()
 
 
-# In[ ]:
+# In[83]:
 
 
+test_loss, test_accuracy, test_brier_score = model.evaluate(
+    X_test, y_test)
 
 
-
-# In[ ]:
-
+# In[84]:
 
 
+X_test
 
 
-# In[ ]:
+# In[74]:
 
 
+indices_of_zero = y_test[y_test == 0.0].index
+indices_of_zero
 
 
-
-# In[169]:
-
-
-evaluación = X_val[100]
+# In[75]:
 
 
-# In[ ]:
+y_test[131456]
 
 
+# In[86]:
 
 
-
-# In[ ]:
-
+predictions = model.predict(X_test)
 
 
+# # Guardamos datos accuracy y loss
+
+# In[87]:
 
 
-# In[ ]:
+df = pd.DataFrame.from_dict(history.history)
+df.to_csv('../../Modelos enternados/history2.csv', index=False)
 
 
+# # Guardamos el modelo
+
+# In[90]:
 
 
-
-# In[170]:
-
-
-X_test1_None = evaluación[None, :]
+path_to_save = '../../Modelos enternados/'
 
 
-# In[171]:
+# In[91]:
 
 
-prediction = model.predict(X_test1_None)
-print(prediction)
-
-
-# In[172]:
-
-
-y_val[10]
-
-
-# In[173]:
-
-
-df.dtypes.value_counts()
-
-
-# In[ ]:
-
-
-
+model.save(path_to_save + 'Modelo2.h5')
 
